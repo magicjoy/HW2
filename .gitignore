@@ -1,0 +1,39 @@
+# Python cache and local environments
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+
+# Runtime output and logs
+*.log
+*.tmp
+*.temp
+uploads/
+tmp/
+temp/
+
+# User/private data and local test assets
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+*.bmp
+*.tif
+*.tiff
+*.env
+*.key
+*.pem
+*.token
+
+# OCR/model files
+*.traineddata
+models/
+model/
+
+# Editor/OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
