@@ -67,7 +67,7 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Pull image and verify it before replacement
-        shell: pwsh
+        shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           docker pull "$env:IMAGE"
@@ -89,7 +89,7 @@ jobs:
           docker stop "$env:PREVIOUS_CONTAINER"
           docker rm "$env:PREVIOUS_CONTAINER"
       - name: Replace running container
-        shell: pwsh
+        shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           $oldExists = docker ps -a --filter "name=^/$env:CONTAINER_NAME$" --format '{{.Names}}'
