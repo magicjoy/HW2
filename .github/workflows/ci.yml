@@ -80,8 +80,8 @@ jobs:
           for ($i = 0; $i -lt 30; $i++) {
             Start-Sleep -Seconds 2
             try {
-              $response = Invoke-WebRequest -Uri 'http://127.0.0.1:18000/' -UseBasicParsing -TimeoutSec 3
-              if ($response.StatusCode -eq 200) { $healthy = $true; break }
+              & curl.exe --fail --silent --show-error --max-time 3 'http://127.0.0.1:18000/' *> $null
+              if ($LASTEXITCODE -eq 0) { $healthy = $true; break }
             } catch { }
           }
           if (-not $healthy) {
@@ -89,6 +89,8 @@ jobs:
             docker rm -f "$env:PREVIOUS_CONTAINER"
             throw '새 이미지의 사전 헬스체크에 실패했습니다.'
           }
+          if (-not $healthy) { throw 'Preflight health check failed for the new image.' }
+          Write-Host 'Preflight health check passed.'
           docker stop "$env:PREVIOUS_CONTAINER"
           docker rm "$env:PREVIOUS_CONTAINER"
       - name: Replace running container
@@ -107,8 +109,8 @@ jobs:
             for ($i = 0; $i -lt 30; $i++) {
               Start-Sleep -Seconds 2
               try {
-                $response = Invoke-WebRequest -Uri "http://127.0.0.1:$env:HOST_PORT/" -UseBasicParsing -TimeoutSec 3
-                if ($response.StatusCode -eq 200) { $healthy = $true; break }
+                & curl.exe --fail --silent --show-error --max-time 3 "http://127.0.0.1:$env:HOST_PORT/" *> $null
+                if ($LASTEXITCODE -eq 0) { $healthy = $true; break }
               } catch { }
             }
             if (-not $healthy) { throw '새 컨테이너 서비스 응답 검증에 실패했습니다.' }
