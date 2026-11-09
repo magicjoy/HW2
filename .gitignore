@@ -1,19 +1,14 @@
-# Python cache and local environments
 __pycache__/
 *.py[cod]
 .venv/
 venv/
 env/
-
-# Runtime output and logs
 *.log
 *.tmp
 *.temp
 uploads/
 tmp/
 temp/
-
-# User/private data and local test assets
 *.png
 *.jpg
 *.jpeg
@@ -22,18 +17,24 @@ temp/
 *.bmp
 *.tif
 *.tiff
-*.env
+*.traineddata
+models/
+model/
+.env
 *.key
 *.pem
 *.token
 
-# OCR/model files
-*.traineddata
-models/
-model/
-
-# Editor/OS files
-.vscode/
-.idea/
-.DS_Store
-Thumbs.db
+# GitHub Actions self-hosted runner files
+actions-runner/
+runner/
+_work/
+run.cmd
+run.sh
+config.cmd
+config.sh
+svc.cmd
+svc.sh
+.runner
+.credentials
+.credentials_rsaparams
