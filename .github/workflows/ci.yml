@@ -72,20 +72,32 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $OutputEncoding = New-Object System.Text.UTF8Encoding($false)
           [Console]::OutputEncoding = $OutputEncoding
+          function Test-ServiceEndpoint([string]$Uri) {
+            try {
+              $request = [System.Net.WebRequest]::Create($Uri)
+              $request.Timeout = 3000
+              $response = $request.GetResponse()
+              $status = [int]$response.StatusCode
+              $response.Close()
+              Write-Host "Health endpoint $Uri returned HTTP $status"
+              return ($status -ge 200 -and $status -lt 400)
+            } catch {
+              Write-Host "Health endpoint $Uri error: $($_.Exception.Message)"
+              return $false
+            }
+          }
           docker pull "$env:IMAGE"
-          $previousName = docker ps -a --filter "name=^/$env:PREVIOUS_CONTAINER`$" --format "{{.Names}}"
-          if (-not [string]::IsNullOrWhiteSpace(($previousName -join ''))) {
-            docker rm -f "$env:PREVIOUS_CONTAINER"
+          $previousId = docker container ls -aq --filter "name=^$env:PREVIOUS_CONTAINER`$"
+          if (-not [string]::IsNullOrWhiteSpace(($previousId -join ''))) {
+            Write-Host "Removing stale temporary container $env:PREVIOUS_CONTAINER"
+            docker rm -f ($previousId -join ' ')
           }
           docker run -d --name "$env:PREVIOUS_CONTAINER" -p 18000:8000 "$env:IMAGE"
           $healthy = $false
           for ($i = 0; $i -lt 30; $i++) {
             Start-Sleep -Seconds 2
             try {
-              & curl.exe --fail --silent --show-error --max-time 3 'http://127.0.0.1:18000/' *> $null
-              $curlExitCode = $LASTEXITCODE
-              Write-Host "Preflight curl exit code: $curlExitCode"
-              if ($curlExitCode -eq 0) { $healthy = $true; break }
+              if (Test-ServiceEndpoint 'http://127.0.0.1:18000/') { $healthy = $true; break }
             } catch { }
           }
           if ($false) {
@@ -103,8 +115,22 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $OutputEncoding = New-Object System.Text.UTF8Encoding($false)
           [Console]::OutputEncoding = $OutputEncoding
-          $oldName = docker ps -a --filter "name=^/$env:CONTAINER_NAME`$" --format "{{.Names}}"
-          $oldExists = -not [string]::IsNullOrWhiteSpace(($oldName -join ''))
+          function Test-ServiceEndpoint([string]$Uri) {
+            try {
+              $request = [System.Net.WebRequest]::Create($Uri)
+              $request.Timeout = 3000
+              $response = $request.GetResponse()
+              $status = [int]$response.StatusCode
+              $response.Close()
+              Write-Host "Health endpoint $Uri returned HTTP $status"
+              return ($status -ge 200 -and $status -lt 400)
+            } catch {
+              Write-Host "Health endpoint $Uri error: $($_.Exception.Message)"
+              return $false
+            }
+          }
+          $oldId = docker container ls -aq --filter "name=^$env:CONTAINER_NAME`$"
+          $oldExists = -not [string]::IsNullOrWhiteSpace(($oldId -join ''))
           if ($oldExists) {
             docker stop "$env:CONTAINER_NAME"
             docker rename "$env:CONTAINER_NAME" "$env:PREVIOUS_CONTAINER"
@@ -115,23 +141,21 @@ jobs:
             for ($i = 0; $i -lt 30; $i++) {
               Start-Sleep -Seconds 2
               try {
-                & curl.exe --fail --silent --show-error --max-time 3 "http://127.0.0.1:$env:HOST_PORT/" *> $null
-                $curlExitCode = $LASTEXITCODE
-                Write-Host "Service curl exit code: $curlExitCode"
-                if ($curlExitCode -eq 0) { $healthy = $true; break }
+                if (Test-ServiceEndpoint "http://127.0.0.1:$env:HOST_PORT/") { $healthy = $true; break }
               } catch { }
             }
+            if (-not $healthy) { throw 'Service health check failed after container replacement.' }
             if (-not $healthy) { throw '새 컨테이너 서비스 응답 검증에 실패했습니다.' }
             if ($oldExists) { docker rm "$env:PREVIOUS_CONTAINER" }
           } catch {
-            $failedName = docker ps -a --filter "name=^/$env:CONTAINER_NAME`$" --format "{{.Names}}"
-            if (-not [string]::IsNullOrWhiteSpace(($failedName -join ''))) {
+            $failedId = docker container ls -aq --filter "name=^$env:CONTAINER_NAME`$"
+            if (-not [string]::IsNullOrWhiteSpace(($failedId -join ''))) {
               docker logs "$env:CONTAINER_NAME"
               docker rm -f "$env:CONTAINER_NAME"
             }
             if ($oldExists) {
-              $rollbackName = docker ps -a --filter "name=^/$env:PREVIOUS_CONTAINER`$" --format "{{.Names}}"
-              if (-not [string]::IsNullOrWhiteSpace(($rollbackName -join ''))) {
+              $rollbackId = docker container ls -aq --filter "name=^$env:PREVIOUS_CONTAINER`$"
+              if (-not [string]::IsNullOrWhiteSpace(($rollbackId -join ''))) {
                 docker rename "$env:PREVIOUS_CONTAINER" "$env:CONTAINER_NAME"
                 docker start "$env:CONTAINER_NAME"
               }
