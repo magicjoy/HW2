@@ -74,13 +74,11 @@ jobs:
           [Console]::OutputEncoding = $OutputEncoding
           function Test-ServiceEndpoint([string]$Uri) {
             try {
-              $request = [System.Net.WebRequest]::Create($Uri)
-              $request.Timeout = 3000
-              $response = $request.GetResponse()
-              $status = [int]$response.StatusCode
-              $response.Close()
-              Write-Host "Health endpoint $Uri returned HTTP $status"
-              return ($status -ge 200 -and $status -lt 400)
+              $curlOutput = & curl.exe -4 --noproxy "*" --silent --show-error --connect-timeout 3 --max-time 5 -o NUL -w "%{http_code}" $Uri 2>&1
+              $curlCode = $LASTEXITCODE
+              $httpCode = ($curlOutput -join '').Trim()
+              Write-Host "Health endpoint $Uri returned HTTP $httpCode (curl exit $curlCode)"
+              return ($curlCode -eq 0 -and $httpCode -match '^[23][0-9][0-9]$')
             } catch {
               Write-Host "Health endpoint $Uri error: $($_.Exception.Message)"
               return $false
@@ -117,13 +115,11 @@ jobs:
           [Console]::OutputEncoding = $OutputEncoding
           function Test-ServiceEndpoint([string]$Uri) {
             try {
-              $request = [System.Net.WebRequest]::Create($Uri)
-              $request.Timeout = 3000
-              $response = $request.GetResponse()
-              $status = [int]$response.StatusCode
-              $response.Close()
-              Write-Host "Health endpoint $Uri returned HTTP $status"
-              return ($status -ge 200 -and $status -lt 400)
+              $curlOutput = & curl.exe -4 --noproxy "*" --silent --show-error --connect-timeout 3 --max-time 5 -o NUL -w "%{http_code}" $Uri 2>&1
+              $curlCode = $LASTEXITCODE
+              $httpCode = ($curlOutput -join '').Trim()
+              Write-Host "Health endpoint $Uri returned HTTP $httpCode (curl exit $curlCode)"
+              return ($curlCode -eq 0 -and $httpCode -match '^[23][0-9][0-9]$')
             } catch {
               Write-Host "Health endpoint $Uri error: $($_.Exception.Message)"
               return $false
