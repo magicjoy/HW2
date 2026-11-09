@@ -38,3 +38,5 @@ svc.sh
 .runner
 .credentials
 .credentials_rsaparams
+deployment-artifacts/
+*.runner.log

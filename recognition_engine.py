@@ -55,32 +55,55 @@ def extract_grid_schedule(image, pytesseract_module):
     x_edges = [0.046, 0.227, 0.409, 0.591, 0.773, 0.955]
     y0, row_h = 0.049, 0.095
     days = ["월", "화", "수", "목", "금"]
-    period_times = [("09:00","10:00"),("10:00","11:00"),("11:00","12:00"),("12:00","13:00"),("13:00","14:00"),("14:00","15:00"),("15:00","16:00"),("16:00","17:00"),("17:00","18:00"),("18:00","19:00")]
+    day_start_minutes = 9 * 60
+    grid_top = int(h * y0)
+    grid_bottom = int(h * (y0 + 10 * row_h))
+
+    def time_at_y(y):
+        # 고정 격자의 세로 좌표를 09:00 기준 분으로 선형 보간합니다.
+        raw = day_start_minutes + ((y - grid_top) / max(1, grid_bottom - grid_top)) * 600
+        # OCR/안티앨리어싱 오차는 15분 단위로 정규화합니다.
+        value = int(round(raw / 15.0) * 15)
+        return max(day_start_minutes, min(day_start_minutes + 600, value))
+
+    def format_minutes(value):
+        return f"{value // 60:02d}:{value % 60:02d}"
+
     blocks = []
     for col, day in enumerate(days):
         x1, x2 = int(w*x_edges[col]), int(w*x_edges[col+1])
-        r = 0
-        while r < 10:
-            y1 = int(h*(y0 + r*row_h)); y2 = int(h*(y0 + (r+1)*row_h))
-            sample = image.crop((x1+5, y1+5, x2-5, y2-5)).resize((1,1)).getpixel((0,0))
-            # 흰색/회색 빈 셀과 달리 과목 셀은 옅은 색 배경을 가집니다.
-            colored = max(sample)-min(sample) > 5 and min(sample) < 245
-            if not colored:
-                r += 1; continue
-            end = r + 1
-            while end < 10:
-                yy1 = int(h*(y0 + end*row_h)); yy2 = int(h*(y0 + (end+1)*row_h))
-                s = image.crop((x1+5, yy1+5, x2-5, yy2-5)).resize((1,1)).getpixel((0,0))
-                if max(s)-min(s) <= 5 or min(s) >= 245: break
-                end += 1
-            crop = image.crop((x1+4, y1+4, x2-4, int(h*(y0 + end*row_h))-4))
+        # 열 중앙의 배경색을 세로로 훑어 색상 블록의 실제 시작/종료 y를 찾습니다.
+        colored_rows = []
+        for y in range(grid_top, grid_bottom):
+            sample = image.crop((x1+8, y, x2-8, y+1)).resize((1,1)).getpixel((0,0))
+            colored_rows.append(max(sample)-min(sample) > 5 and min(sample) < 248)
+        segments = []
+        start = None; gap = 0
+        for offset, is_colored in enumerate(colored_rows):
+            y = grid_top + offset
+            if is_colored:
+                if start is None: start = y
+                gap = 0
+            elif start is not None:
+                gap += 1
+                if gap > 3:
+                    end = y - gap + 1
+                    if end - start >= 8: segments.append((start, end))
+                    start = None; gap = 0
+        if start is not None:
+            segments.append((start, grid_bottom))
+
+        for y1, y2 in segments:
+            crop = image.crop((x1+4, y1+2, x2-4, y2-2))
             crop = ImageOps.autocontrast(crop.convert("L")).resize((crop.width*2, crop.height*2))
             text = pytesseract_module.image_to_string(crop, lang="kor+eng", config="--psm 6").strip()
             text = re.sub(r"\s+", " ", text)
             # 담당자/강의실 보조 줄은 과목명에서 제거하지 않고 사용자가 수정할 수 있도록 보존합니다.
             if text:
-                blocks.append({"day": day, "start": period_times[r][0], "end": period_times[min(end-1, 9)][1], "subject": text})
-            r = end
+                start_minute = time_at_y(y1)
+                end_minute = time_at_y(y2)
+                if end_minute > start_minute:
+                    blocks.append({"day": day, "start": format_minutes(start_minute), "end": format_minutes(end_minute), "subject": text})
     return blocks
 
 def parse_ocr_text(text):
