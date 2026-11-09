@@ -38,4 +38,5 @@ class Handler(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     print("Local timetable planner: http://127.0.0.1:8000")
-    ThreadingHTTPServer(("127.0.0.1", 8000), Handler).serve_forever()
+    host = os.environ.get("APP_HOST", "127.0.0.1")
+    ThreadingHTTPServer((host, 8000), Handler).serve_forever()
