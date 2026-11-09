@@ -71,7 +71,10 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           docker pull "$env:IMAGE"
-          docker rm -f "$env:PREVIOUS_CONTAINER" 2>$null
+          $previousName = docker ps -a --filter "name=^/$env:PREVIOUS_CONTAINER`$" --format "{{.Names}}"
+          if (-not [string]::IsNullOrWhiteSpace(($previousName -join ''))) {
+            docker rm -f "$env:PREVIOUS_CONTAINER"
+          }
           docker run -d --name "$env:PREVIOUS_CONTAINER" -p 18000:8000 "$env:IMAGE"
           $healthy = $false
           for ($i = 0; $i -lt 30; $i++) {
@@ -92,13 +95,14 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          $oldExists = docker ps -a --filter "name=^/$env:CONTAINER_NAME$" --format '{{.Names}}'
+          $oldName = docker ps -a --filter "name=^/$env:CONTAINER_NAME`$" --format "{{.Names}}"
+          $oldExists = -not [string]::IsNullOrWhiteSpace(($oldName -join ''))
           if ($oldExists) {
-            docker stop "$env:CONTAINER_NAME" 2>$null
+            docker stop "$env:CONTAINER_NAME"
             docker rename "$env:CONTAINER_NAME" "$env:PREVIOUS_CONTAINER"
           }
           try {
-            docker run -d --restart unless-stopped --name "$env:CONTAINER_NAME" -p "$env:HOST_PORT`:8000" "$env:IMAGE"
+            docker run -d --restart unless-stopped --name "$env:CONTAINER_NAME" -p "$($env:HOST_PORT):8000" "$env:IMAGE"
             $healthy = $false
             for ($i = 0; $i -lt 30; $i++) {
               Start-Sleep -Seconds 2
@@ -110,11 +114,17 @@ jobs:
             if (-not $healthy) { throw '새 컨테이너 서비스 응답 검증에 실패했습니다.' }
             if ($oldExists) { docker rm "$env:PREVIOUS_CONTAINER" }
           } catch {
-            docker logs "$env:CONTAINER_NAME" 2>$null
-            docker rm -f "$env:CONTAINER_NAME" 2>$null
+            $failedName = docker ps -a --filter "name=^/$env:CONTAINER_NAME`$" --format "{{.Names}}"
+            if (-not [string]::IsNullOrWhiteSpace(($failedName -join ''))) {
+              docker logs "$env:CONTAINER_NAME"
+              docker rm -f "$env:CONTAINER_NAME"
+            }
             if ($oldExists) {
-              docker rename "$env:PREVIOUS_CONTAINER" "$env:CONTAINER_NAME"
-              docker start "$env:CONTAINER_NAME"
+              $rollbackName = docker ps -a --filter "name=^/$env:PREVIOUS_CONTAINER`$" --format "{{.Names}}"
+              if (-not [string]::IsNullOrWhiteSpace(($rollbackName -join ''))) {
+                docker rename "$env:PREVIOUS_CONTAINER" "$env:CONTAINER_NAME"
+                docker start "$env:CONTAINER_NAME"
+              }
             }
             throw
           }
