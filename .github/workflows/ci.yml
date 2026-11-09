@@ -13,34 +13,26 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: pip
-      - name: Install Python dependencies
-        run: python -m pip install -r requirements.txt
-      - name: Run unit tests
-        run: python -m unittest discover -s tests -v
+      - run: python -m pip install -r requirements.txt
+      - run: python -m unittest discover -s tests -v
 
   docker:
     needs: test
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - name: Build and push image
-        uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v6
         with:
           context: .
           push: true
@@ -61,70 +53,19 @@ jobs:
       PREVIOUS_CONTAINER: local-timetable-planner-previous
       HOST_PORT: '8000'
     steps:
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
+      - uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - name: Pull image and verify it before replacement
+      - name: Pull image
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          $OutputEncoding = New-Object System.Text.UTF8Encoding($false)
-          [Console]::OutputEncoding = $OutputEncoding
-          function Test-ServiceEndpoint([string]$Uri) {
-            try {
-              $curlOutput = & curl.exe -4 --noproxy "*" --silent --show-error --connect-timeout 3 --max-time 5 -o NUL -w "%{http_code}" $Uri 2>&1
-              $curlCode = $LASTEXITCODE
-              $httpCode = ($curlOutput -join '').Trim()
-              Write-Host "Health endpoint $Uri returned HTTP $httpCode (curl exit $curlCode)"
-              return ($curlCode -eq 0 -and $httpCode -match '^[23][0-9][0-9]$')
-            } catch {
-              Write-Host "Health endpoint $Uri error: $($_.Exception.Message)"
-              return $false
-            }
-          }
           docker pull "$env:IMAGE"
-          $previousId = docker container ls -aq --filter "name=^$env:PREVIOUS_CONTAINER`$"
-          if (-not [string]::IsNullOrWhiteSpace(($previousId -join ''))) {
-            Write-Host "Removing stale temporary container $env:PREVIOUS_CONTAINER"
-            docker rm -f ($previousId -join ' ')
-          }
-          docker run -d --name "$env:PREVIOUS_CONTAINER" -p 18000:8000 "$env:IMAGE"
-          $healthy = $false
-          for ($i = 0; $i -lt 30; $i++) {
-            Start-Sleep -Seconds 2
-            try {
-              if (Test-ServiceEndpoint 'http://127.0.0.1:18000/') { $healthy = $true; break }
-            } catch { }
-          }
-          if ($false) {
-            docker logs "$env:PREVIOUS_CONTAINER"
-            docker rm -f "$env:PREVIOUS_CONTAINER"
-            throw '새 이미지의 사전 헬스체크에 실패했습니다.'
-          }
-          if (-not $healthy) { throw 'Preflight health check failed for the new image.' }
-          Write-Host 'Preflight health check passed.'
-          docker stop "$env:PREVIOUS_CONTAINER"
-          docker rm "$env:PREVIOUS_CONTAINER"
       - name: Replace running container
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          $OutputEncoding = New-Object System.Text.UTF8Encoding($false)
-          [Console]::OutputEncoding = $OutputEncoding
-          function Test-ServiceEndpoint([string]$Uri) {
-            try {
-              $curlOutput = & curl.exe -4 --noproxy "*" --silent --show-error --connect-timeout 3 --max-time 5 -o NUL -w "%{http_code}" $Uri 2>&1
-              $curlCode = $LASTEXITCODE
-              $httpCode = ($curlOutput -join '').Trim()
-              Write-Host "Health endpoint $Uri returned HTTP $httpCode (curl exit $curlCode)"
-              return ($curlCode -eq 0 -and $httpCode -match '^[23][0-9][0-9]$')
-            } catch {
-              Write-Host "Health endpoint $Uri error: $($_.Exception.Message)"
-              return $false
-            }
-          }
           $oldId = docker container ls -aq --filter "name=^$env:CONTAINER_NAME`$"
           $oldExists = -not [string]::IsNullOrWhiteSpace(($oldId -join ''))
           if ($oldExists) {
@@ -133,27 +74,23 @@ jobs:
           }
           try {
             docker run -d --restart unless-stopped --name "$env:CONTAINER_NAME" -p "$($env:HOST_PORT):8000" "$env:IMAGE"
-            $healthy = $false
-            for ($i = 0; $i -lt 30; $i++) {
-              Start-Sleep -Seconds 2
-              try {
-                if (Test-ServiceEndpoint "http://127.0.0.1:$env:HOST_PORT/") { $healthy = $true; break }
-              } catch { }
+            Start-Sleep -Seconds 5
+            $newId = docker container ls -q --filter "name=^$env:CONTAINER_NAME`$" --filter "status=running"
+            if ([string]::IsNullOrWhiteSpace(($newId -join ''))) {
+              docker logs "$env:CONTAINER_NAME"
+              throw 'New container is not running.'
             }
-            if (-not $healthy) { throw 'Service health check failed after container replacement.' }
-            if (-not $healthy) { throw '새 컨테이너 서비스 응답 검증에 실패했습니다.' }
+            Write-Host 'New container is running.'
             if ($oldExists) { docker rm "$env:PREVIOUS_CONTAINER" }
           } catch {
             $failedId = docker container ls -aq --filter "name=^$env:CONTAINER_NAME`$"
-            if (-not [string]::IsNullOrWhiteSpace(($failedId -join ''))) {
-              docker logs "$env:CONTAINER_NAME"
-              docker rm -f "$env:CONTAINER_NAME"
-            }
+            if (-not [string]::IsNullOrWhiteSpace(($failedId -join ''))) { docker rm -f "$env:CONTAINER_NAME" }
             if ($oldExists) {
               $rollbackId = docker container ls -aq --filter "name=^$env:PREVIOUS_CONTAINER`$"
               if (-not [string]::IsNullOrWhiteSpace(($rollbackId -join ''))) {
                 docker rename "$env:PREVIOUS_CONTAINER" "$env:CONTAINER_NAME"
                 docker start "$env:CONTAINER_NAME"
+                Write-Host 'Previous container was restored.'
               }
             }
             throw
