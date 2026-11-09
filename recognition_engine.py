@@ -53,18 +53,22 @@ def extract_grid_schedule(image, pytesseract_module):
     w, h = image.size
     # 기준 이미지(1479x756)의 상대 좌표. 좌측 교시 라벨과 우측 시간 라벨을 제외합니다.
     x_edges = [0.046, 0.227, 0.409, 0.591, 0.773, 0.955]
-    y0, row_h = 0.049, 0.095
+    # 첨부 이미지의 실제 오른쪽 시간축은 오전 9시~오후 11시(총 14시간)이며,
+    # 헤더 아래에 15개의 시간 행이 있습니다. 기존 10행 가정은 오후 시간대를
+    # 한 시간 이상 앞당기는 원인이 되므로 15행 좌표를 사용합니다.
+    y0, row_h = 0.049, 0.0635
+    total_rows = 15
     days = ["월", "화", "수", "목", "금"]
     day_start_minutes = 9 * 60
     grid_top = int(h * y0)
-    grid_bottom = int(h * (y0 + 10 * row_h))
+    grid_bottom = int(h * (y0 + total_rows * row_h))
 
     def time_at_y(y):
         # 고정 격자의 세로 좌표를 09:00 기준 분으로 선형 보간합니다.
-        raw = day_start_minutes + ((y - grid_top) / max(1, grid_bottom - grid_top)) * 600
+        raw = day_start_minutes + ((y - grid_top) / max(1, grid_bottom - grid_top)) * (14 * 60)
         # OCR/안티앨리어싱 오차는 15분 단위로 정규화합니다.
         value = int(round(raw / 15.0) * 15)
-        return max(day_start_minutes, min(day_start_minutes + 600, value))
+        return max(day_start_minutes, min(day_start_minutes + 14 * 60, value))
 
     def format_minutes(value):
         return f"{value // 60:02d}:{value % 60:02d}"
